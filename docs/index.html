@@ -1,0 +1,78 @@
+<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pagesEVAL | ترقيم PDF</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#edf2f5;color:#183344;font:16px Tahoma,Arial}header{background:#123e4a;color:white;padding:24px 5%}header p{color:#c3dddd;margin-bottom:0}main{display:grid;grid-template-columns:340px 1fr;gap:24px;padding:24px;max-width:1500px;margin:auto}aside,article{background:white;border-radius:16px;padding:22px;box-shadow:0 5px 25px #14343e0b}label{display:block;margin:14px 0 7px}input,select,button{font:inherit;padding:10px;border:1px solid #b8cbd1;border-radius:7px;max-width:100%}input,select{width:100%;background:#fafcfd}button{cursor:pointer;background:#126c71;color:white;border:0;margin:8px 0}button:disabled{opacity:.5;cursor:wait}.secondary{background:#e3edef;color:#17464a}h2{font-size:19px}.row{display:flex;gap:8px;align-items:center}.row input{width:90px}.coords{display:grid;grid-template-columns:1fr 1fr;gap:8px}.coords label{font-size:13px;margin:6px 0}.coords input{margin-top:4px}#stage{position:relative;direction:ltr;margin:auto;max-width:850px;line-height:0;background:#f1f5f6;min-height:200px}#pageImage{width:100%;display:block}.box{position:absolute;border:2px dashed #008d8d;background:#00aaaa18;cursor:move;touch-action:none;line-height:1.4;color:#005b63;font:12px Tahoma;display:flex;align-items:center;justify-content:center}.box.number{border-color:#dd8b27;background:#ffaa0022;color:#8b5100}#status{padding:12px;border-radius:8px;background:#e7f2f1;margin-top:14px;line-height:1.8;white-space:pre-wrap}.hint{font-size:13px;line-height:1.8;color:#58727b}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}.toolbar input{width:70px}.hidden{display:none!important}@media(max-width:850px){main{grid-template-columns:1fr;padding:12px}aside{order:0}} </style>
+<header><h1 style="margin:0;font-size:27px">pagesEVAL | ترقيم PDF</h1><p>رمز المحور ورقم الصفحة • معاينة ثم إخراج PDF</p></header>
+<main><aside><h2>١. المستند</h2><input aria-label="اختيار ملف PDF" id="file" type="file" accept=".pdf,application/pdf"><p class="hint">نسخة PDF للمتصفح: لا تُرفع مستنداتك إلى أي خادم. لملفات Word: احفظها بصيغة PDF أولاً.</p><label for="mode">طريقة العمل</label><select id="mode"><option value="document">ترقيم جميع صفحات المستند</option><option value="template">تكرار قالب من صفحة واحدة</option></select><label for="code">رمز المحور</label><input id="code" value="P3S12D1A2023" maxlength="120"><label for="count">عدد الصفحات N</label><input id="count" type="number" min="1" max="1000" value="1"><p class="hint">في المستند المتعدد يجب أن يطابق N عدد صفحاته. في القالب تُكرر الصفحة N مرة.</p><h2>٢. ضبط الخانتين</h2><p class="hint">اسحب كل مستطيل إلى الخانة المطلوبة. القيم نسب مئوية من أعلى ويسار الصفحة؛ تطبق على جميع الصفحات.</p><label for="selected">الخانة</label><select id="selected"><option value="code">رمز المحور</option><option value="number">رقم الصفحة</option></select><div id="coordinates" class="coords"></div><label for="size">حجم الخط بالنقاط</label><input id="size" type="number" min="6" max="40" value="12"><button class="secondary" id="reset">استعادة مواضع النموذج</button><h2>٣. إخراج PDF</h2><button id="preview">معاينة الأرقام المثبتة</button><button id="download">حفظ PDF بعد الترقيم</button><p class="hint">تُضاف الكتابة فوق المستند دون مسح محتواه. إذا كانت الخانة تحتوي رقماً أو رمزاً قديماً، جهّز نسخة بخانة فارغة لتجنب تراكب النصوص.</p><div id="status" role="status" aria-live="polite">ارفع مستنداً للبدء.</div></aside>
+<article><div class="toolbar"><strong id="filename">معاينة المستند</strong><button id="previous" class="secondary">السابق</button><input id="page" aria-label="صفحة المعاينة" type="number" value="1" min="1"><span id="total">/ 0</span><button id="next" class="secondary">التالي</button><button id="edit" class="secondary">ضبط المواضع</button></div><div id="stage"><img id="pageImage" alt="معاينة صفحة المستند"><div id="codeBox" class="box hidden">رمز المحور</div><div id="numberBox" class="box number hidden">رقم الصفحة</div></div><p class="hint">المواضع المبدئية تقريبية استناداً إلى الصور. اضبطها على المستند الفعلي ثم افحص أول صفحة وآخر صفحة.</p></article></main>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);let token,loaded=false,stamped=false,busy=false,imageURL;let boxes;const defaults=()=>({code:{x:54,y:9,w:19,h:3.5},number:{x:89,y:82,w:7,h:4}});boxes=defaults();
+let sourceData,sourcePages=0;
+const ready=Promise.resolve();
+if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+function status(s){$('status').textContent=s}
+function settings(){return {code:$('code').value,count:Number($('count').value),mode:$('mode').value,size:Number($('size').value),codeBox:{...boxes.code},numberBox:{...boxes.number},page:Number($('page').value),stamped}}
+function validate(s){
+ if(!Number.isInteger(s.count)||s.count<1||s.count>1000)throw Error('عدد الصفحات يجب أن يكون بين 1 و1000.');
+ if(s.mode==='template'?sourcePages!==1:s.count!==sourcePages)throw Error('يجب مطابقة عدد الصفحات للمستند، أو اختيار قالب من صفحة واحدة.');
+ if(!s.code.trim()||s.code.length>120)throw Error('أدخل رمز محور من 1 إلى 120 حرفاً.');
+ if(!Number.isFinite(s.size)||s.size<6||s.size>40)throw Error('حجم الخط بين 6 و40.');
+ for(const b of [s.codeBox,s.numberBox])if(!Object.values(b).every(Number.isFinite)||b.x<0||b.y<0||b.w<=0||b.h<=0||b.x+b.w>100||b.y+b.h>100)throw Error('يجب أن تقع الخانتان داخل الصفحة.');
+}
+function textImage(text,w,h,size){
+ const scale=3,c=document.createElement('canvas');c.width=Math.ceil(w*scale);c.height=Math.ceil(h*scale);const ctx=c.getContext('2d');
+ ctx.scale(scale,scale);ctx.font=size+'px Arial';ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';ctx.direction=/[\u0600-\u06ff]/.test(text)?'rtl':'ltr';
+ if(ctx.measureText(text).width>w-2||size*1.25>h)throw Error('النص لا يتسع في الخانة. كبّر الخانة أو صغّر الخط.');
+ ctx.fillText(text,w/2,h/2);return c.toDataURL('image/png');
+}
+async function output(s){
+ validate(s);const {PDFDocument,degrees}=PDFLib;const pdf=await PDFDocument.load(sourceData.slice());
+ if(s.mode==='template'){const first=pdf.getPage(0);for(let i=1;i<s.count;i++){const [p]=await pdf.copyPages(pdf,[0]);pdf.addPage(p)}}
+ for(let i=0;i<pdf.getPageCount();i++){
+  const p=pdf.getPage(i),crop=p.getCropBox(),r=((p.getRotation().angle%360)+360)%360;
+  const W=r%180?crop.height:crop.width,H=r%180?crop.width:crop.height;
+  for(const [b,t] of [[s.codeBox,s.code.trim()],[s.numberBox,String(i+1)]]){
+   const x=b.x/100*W,y=H-(b.y+b.h)/100*H,w=b.w/100*W,h=b.h/100*H;
+   const img=await pdf.embedPng(textImage(t,w,h,s.size));let px=x,py=y;
+   if(r===90){px=crop.width-y;py=x}else if(r===180){px=crop.width-x;py=crop.height-y}else if(r===270){px=y;py=crop.height-x}
+   p.drawImage(img,{x:px+crop.x,y:py+crop.y,width:w,height:h,rotate:degrees(r)});
+  }
+ }
+ return pdf.save();
+}
+async function api(path,data){
+ if(!window.PDFLib||!window.pdfjsLib)throw Error('تعذر تحميل أدوات PDF. تحقق من الإنترنت ثم حدّث الصفحة.');
+ if(path==='/upload'){
+  if(!/\.pdf$/i.test(data.name))throw Error('هذه النسخة تدعم PDF فقط.');
+  const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
+  let doc;try{doc=await PDFLib.PDFDocument.load(bytes.slice())}catch(e){throw Error('تعذر فتح PDF. تحقق أنه سليم وغير محمي بكلمة مرور.')}
+  if(!doc.getPageCount()||doc.getPageCount()>1000)throw Error('المستند يجب أن يحتوي من 1 إلى 1000 صفحة.');
+  sourceData=bytes;sourcePages=doc.getPageCount();return new Response(JSON.stringify({pages:sourcePages}));
+ }
+ if(!sourceData)throw Error('ارفع ملف PDF أولاً.');
+ if(path==='/export')return new Response(await output(data),{headers:{'Content-Type':'application/pdf'}});
+ if(path==='/render'){
+  const bytes=data.stamped?await output(data):sourceData.slice();
+  const doc=await pdfjsLib.getDocument({data:bytes}).promise;
+  try{const index=data.mode==='template'&&!data.stamped?1:data.page;
+   if(!Number.isInteger(index)||index<1||index>doc.numPages)throw Error('رقم المعاينة غير صالح.');
+   const p=await doc.getPage(index),view=p.getViewport({scale:1.3}),c=document.createElement('canvas');c.width=Math.ceil(view.width);c.height=Math.ceil(view.height);
+   await p.render({canvasContext:c.getContext('2d'),viewport:view}).promise;
+   return new Response(await new Promise(resolve=>c.toBlob(resolve,'image/png')));
+  }finally{await doc.destroy()}
+ }
+ throw Error('طلب غير صالح.');
+}
+async function task(fn){if(busy)return;busy=true;document.querySelectorAll('button,input,select').forEach(b=>b.disabled=true);try{await fn()}catch(e){status(e.message)}finally{busy=false;document.querySelectorAll('button,input,select').forEach(b=>b.disabled=false)}}
+function paint(){for(const key of ['code','number']){let el=$(key+'Box'),b=boxes[key];Object.assign(el.style,{left:b.x+'%',top:b.y+'%',width:b.w+'%',height:b.h+'%'});el.classList.toggle('hidden',!loaded||stamped)}$('total').textContent='/ '+($('mode').value==='template'?$('count').value:($('file').dataset.pages||0))}
+function coords(){const b=boxes[$('selected').value];$('coordinates').replaceChildren();for(const [k,label] of Object.entries({x:'من اليسار %',y:'من الأعلى %',w:'العرض %',h:'الارتفاع %'})){const l=document.createElement('label');l.textContent=label;const n=document.createElement('input');n.type='number';n.step='.1';n.min='0';n.max='100';n.value=b[k];n.oninput=()=>{b[k]=Number(n.value);const was=stamped;stamped=false;paint();if(was)task(render)};l.append(n);$('coordinates').append(l)}}
+async function render(){if(!loaded)throw Error('ارفع المستند أولاً.');const r=await api('/render',settings());if(imageURL)URL.revokeObjectURL(imageURL);imageURL=URL.createObjectURL(await r.blob());$('pageImage').src=imageURL;paint();status(stamped?'هذه معاينة الأرقام المثبتة كما ستظهر في PDF.':'اسحب المستطيلين لضبط الخانتين، ثم اعرض معاينة الأرقام.');}
+$('file').onchange=()=>task(async()=>{const f=$('file').files[0];if(!f)return;if(f.size>60*1024*1024)throw Error('الحد الأقصى 60 ميغابايت.');status('جارٍ فتح ملف PDF…');const data=await new Promise((resolve,reject)=>{let reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(f)});let j=await (await api('/upload',{name:f.name,data})).json();loaded=true;stamped=false;$('file').dataset.pages=j.pages;$('count').value=j.pages;$('page').value=1;$('filename').textContent=f.name;await render()});
+$('selected').onchange=coords;$('reset').onclick=()=>{boxes=defaults();const was=stamped;stamped=false;coords();paint();if(was)task(render)};$('preview').onclick=()=>task(async()=>{stamped=true;try{await render()}catch(e){stamped=false;paint();throw e}});$('edit').onclick=()=>task(async()=>{stamped=false;await render()});
+for(const id of ['code','count','size','mode'])$(id).oninput=()=>{if(stamped){stamped=false;task(render)}paint()};
+function navigate(delta){task(async()=>{const n=$('mode').value==='template'?Number($('count').value):Number($('file').dataset.pages);$('page').value=Math.max(1,Math.min(n,Number($('page').value)+delta));await render()})}
+$('previous').onclick=()=>navigate(-1);$('next').onclick=()=>navigate(1);$('page').onchange=()=>navigate(0);
+$('download').onclick=()=>task(async()=>{if(!loaded)throw Error('ارفع المستند أولاً.');status('جارٍ تثبيت الأرقام وإنشاء PDF…');const r=await api('/export',settings());const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download='numbered-document.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);status('تم إنشاء PDF بالأرقام المثبتة. ستجده في تنزيلات المتصفح.')});
+for(const key of ['code','number']){const el=$(key+'Box');let drag;el.onpointerdown=e=>{if(busy)return;$('selected').value=key;coords();drag={px:e.clientX,py:e.clientY,bx:boxes[key].x,by:boxes[key].y};el.setPointerCapture(e.pointerId)};el.onpointermove=e=>{if(!drag)return;let r=$('stage').getBoundingClientRect(),b=boxes[key];b.x=Math.max(0,Math.min(100-b.w,drag.bx+(e.clientX-drag.px)/r.width*100));b.y=Math.max(0,Math.min(100-b.h,drag.by+(e.clientY-drag.py)/r.height*100));paint();coords()};el.onpointerup=el.onpointercancel=()=>drag=null;}
+coords();paint();
+</script></html>
